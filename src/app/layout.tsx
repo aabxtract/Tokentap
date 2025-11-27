@@ -3,6 +3,7 @@ import { Space_Grotesk } from 'next/font/google';
 import './globals.css';
 import { cn } from '@/lib/utils';
 import { Toaster } from '@/components/ui/toaster';
+import { FirebaseClientProvider } from '@/firebase/client-provider';
 
 const spaceGrotesk = Space_Grotesk({
   subsets: ['latin'],
@@ -22,7 +23,9 @@ export default function RootLayout({
   return (
     <html lang="en" className="dark">
       <body className={cn('font-headline antialiased', spaceGrotesk.variable)}>
-        {children}
+        <FirebaseClientProvider>
+            {children}
+        </FirebaseClientProvider>
         <Toaster />
       </body>
     </html>

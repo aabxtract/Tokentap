@@ -8,6 +8,9 @@ import { cn } from '@/lib/utils';
 import { Loader2, Wallet, Clock, Droplet } from 'lucide-react';
 import { GasEstimator } from './gas-estimator';
 import { formatDistanceToNowStrict } from 'date-fns';
+import { Skeleton } from '@/components/ui/skeleton';
+import { useUser } from '@/firebase';
+import { Avatar, AvatarFallback, AvatarImage } from './ui/avatar';
 
 type ClaimCardProps = {
   isConnected: boolean;
@@ -18,6 +21,8 @@ type ClaimCardProps = {
   lastClaimTime: string | null;
   onConnectWallet: () => void;
   onClaim: () => void;
+  userProfile: any;
+  isProfileLoading: boolean;
 };
 
 const CooldownTimer = ({ endTime }: { endTime: number }) => {
@@ -90,9 +95,88 @@ export const ClaimCard = ({
   lastClaimTime,
   onConnectWallet,
   onClaim,
+  userProfile,
+  isProfileLoading,
 }: ClaimCardProps) => {
 
   const canClaim = cooldownEndTime ? Date.now() > cooldownEndTime : true;
+  const user = useUser();
+
+  const renderProfile = () => {
+    if (isProfileLoading) {
+        return (
+            <div className="flex flex-col gap-6">
+                <div className="flex items-center space-x-4 border border-white/10 rounded-lg p-4 bg-black/20">
+                    <Skeleton className="h-10 w-10 rounded-full" />
+                    <div className="space-y-2">
+                        <Skeleton className="h-4 w-[150px]" />
+                        <Skeleton className="h-4 w-[100px]" />
+                    </div>
+                </div>
+                <div className="grid grid-cols-2 gap-4 text-center">
+                    <Skeleton className="h-[76px] w-full rounded-lg" />
+                    <Skeleton className="h-[76px] w-full rounded-lg" />
+                </div>
+                <Skeleton className="h-[68px] w-full rounded-full" />
+            </div>
+        )
+    }
+    return (
+        <div className="flex flex-col gap-6">
+        <div className="flex items-center gap-4 border border-white/10 rounded-lg p-4 bg-black/20">
+          <Avatar>
+            <AvatarImage src={user?.photoURL || ''} />
+            <AvatarFallback>{user?.displayName?.[0]}</AvatarFallback>
+          </Avatar>
+          <div className="flex flex-col">
+            <span className="font-semibold">{user?.displayName}</span>
+            <span className="font-mono text-xs text-foreground/70 truncate">{user?.email}</span>
+          </div>
+          <div className="ml-auto h-2 w-2 rounded-full bg-green-400 shadow-[0_0_8px_theme(colors.green.400)]"></div>
+        </div>
+        
+        <div className="grid grid-cols-2 gap-4 text-center">
+            <div className="border border-white/10 rounded-lg p-3 bg-black/20">
+                <p className="text-sm text-foreground/70">Your Balance</p>
+                <p className="text-lg font-bold">{tokenBalance.toLocaleString()} {TOKEN_SYMBOL}</p>
+            </div>
+            <div className="border border-white/10 rounded-lg p-3 bg-black/20">
+                <p className="text-sm text-foreground/70">Last Claim</p>
+                <p className="text-lg font-bold">
+                    {lastClaimTime ? formatDistanceToNowStrict(new Date(lastClaimTime), { addSuffix: true }) : 'Never'}
+                </p>
+            </div>
+        </div>
+
+        {canClaim ? (
+            <div className="flex flex-col items-center gap-6">
+                <div className="text-center">
+                    <p className="text-foreground/80">You will receive</p>
+                    <p className="text-3xl font-bold text-primary drop-shadow-[0_0_4px_hsl(var(--primary))]">
+                        {TOKEN_CLAIM_AMOUNT} {TOKEN_SYMBOL}
+                    </p>
+                </div>
+                <GasEstimator walletAddress={walletAddress} tokenSymbol={TOKEN_SYMBOL} />
+                <Button onClick={onClaim} disabled={isClaiming} size="lg" className={cn(
+                    "w-full mt-4 rounded-full font-bold text-xl py-8 transition-all duration-300",
+                    !isClaiming && 'animate-pulse-glow'
+                )}>
+                    {isClaiming ? (
+                        <Loader2 className="h-8 w-8 animate-spin" />
+                    ) : (
+                        <>
+                        <Droplet className="mr-3 h-6 w-6" />
+                        Claim Now
+                        </>
+                    )}
+                </Button>
+            </div>
+        ) : (
+            <CooldownTimer endTime={cooldownEndTime!} />
+        )}
+      </div>
+    )
+  }
 
   return (
     <Card className="glassmorphism w-full max-w-md rounded-2xl">
@@ -103,59 +187,11 @@ export const ClaimCard = ({
             <p className="text-foreground/70">Connect your wallet to claim your free tokens.</p>
             <Button onClick={onConnectWallet} size="lg" className="w-full mt-4 rounded-full font-bold text-lg shadow-glow-primary hover:shadow-glow-accent transition-all duration-300">
               <Wallet className="mr-2 h-5 w-5" />
-              Connect Wallet
+              Sign in with Google
             </Button>
           </div>
         ) : (
-          <div className="flex flex-col gap-6">
-            <div className="flex flex-col gap-2 border border-white/10 rounded-lg p-4 bg-black/20">
-              <div className="flex justify-between items-center text-sm text-foreground/70">
-                <span>Wallet Connected</span>
-                <div className="h-2 w-2 rounded-full bg-green-400 shadow-[0_0_8px_theme(colors.green.400)]"></div>
-              </div>
-              <p className="font-mono text-base truncate">{walletAddress}</p>
-            </div>
-            
-            <div className="grid grid-cols-2 gap-4 text-center">
-                <div className="border border-white/10 rounded-lg p-3 bg-black/20">
-                    <p className="text-sm text-foreground/70">Your Balance</p>
-                    <p className="text-lg font-bold">{tokenBalance.toLocaleString()} {TOKEN_SYMBOL}</p>
-                </div>
-                <div className="border border-white/10 rounded-lg p-3 bg-black/20">
-                    <p className="text-sm text-foreground/70">Last Claim</p>
-                    <p className="text-lg font-bold">
-                        {lastClaimTime ? formatDistanceToNowStrict(new Date(lastClaimTime), { addSuffix: true }) : 'Never'}
-                    </p>
-                </div>
-            </div>
-
-            {canClaim ? (
-                <div className="flex flex-col items-center gap-6">
-                    <div className="text-center">
-                        <p className="text-foreground/80">You will receive</p>
-                        <p className="text-3xl font-bold text-primary drop-shadow-[0_0_4px_hsl(var(--primary))]">
-                            {TOKEN_CLAIM_AMOUNT} {TOKEN_SYMBOL}
-                        </p>
-                    </div>
-                    <GasEstimator walletAddress={walletAddress} tokenSymbol={TOKEN_SYMBOL} />
-                    <Button onClick={onClaim} disabled={isClaiming} size="lg" className={cn(
-                        "w-full mt-4 rounded-full font-bold text-xl py-8 transition-all duration-300",
-                        !isClaiming && 'animate-pulse-glow'
-                    )}>
-                        {isClaiming ? (
-                            <Loader2 className="h-8 w-8 animate-spin" />
-                        ) : (
-                            <>
-                            <Droplet className="mr-3 h-6 w-6" />
-                            Claim Now
-                            </>
-                        )}
-                    </Button>
-                </div>
-            ) : (
-                <CooldownTimer endTime={cooldownEndTime!} />
-            )}
-          </div>
+          renderProfile()
         )}
       </CardContent>
     </Card>

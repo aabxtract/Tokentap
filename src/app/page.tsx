@@ -6,66 +6,80 @@ import { TokenTapLogo } from '@/components/icons';
 import { SuccessModal } from '@/components/success-modal';
 import ParticleBackground from '@/components/particle-background';
 import { TOKEN_CLAIM_AMOUNT, TOKEN_SYMBOL, COOLDOWN_SECONDS, APP_NAME } from '@/lib/constants';
+import { useAuth, useUser, useDoc, useFirestore, useFirebaseApp } from '@/firebase';
+import { GoogleAuthProvider, signInWithPopup } from 'firebase/auth';
+import { doc, setDoc, getDoc, serverTimestamp, updateDoc } from 'firebase/firestore';
+import { Button } from '@/components/ui/button';
+import Link from 'next/link';
 
 export default function Home() {
-  const [isConnected, setIsConnected] = useState(false);
+  const auth = useAuth();
+  const user = useUser();
+  const firestore = useFirestore();
+  const app = useFirebaseApp();
+
+  const userDocRef = firestore && user ? doc(firestore, 'users', user.uid) : null;
+  const { data: userProfile, loading: userProfileLoading } = useDoc(userDocRef);
+  
   const [isClaiming, setIsClaiming] = useState(false);
   const [showSuccessModal, setShowSuccessModal] = useState(false);
-  const [cooldownEndTime, setCooldownEndTime] = useState<number | null>(null);
-  const [lastClaimTime, setLastClaimTime] = useState<string | null>(null);
-  const [walletAddress, setWalletAddress] = useState('0x...1234');
-  const [tokenBalance, setTokenBalance] = useState(0);
   const [txHash, setTxHash] = useState('');
 
-  const handleConnectWallet = () => {
-    setIsConnected(true);
-    // In a real app, you'd use a library like ethers.js or viem
-    // to connect and get wallet details.
-    setWalletAddress('0xBEEF...dEAD');
-    setTokenBalance(120);
-  };
+  const handleConnectWallet = async () => {
+    if (auth) {
+      try {
+        const provider = new GoogleAuthProvider();
+        const result = await signInWithPopup(auth, provider);
+        const signedInUser = result.user;
 
-  const handleClaim = () => {
-    if (cooldownEndTime && Date.now() < cooldownEndTime) return;
+        if (firestore && signedInUser) {
+            const userDocRef = doc(firestore, 'users', signedInUser.uid);
+            const userDocSnap = await getDoc(userDocRef);
+
+            if (!userDocSnap.exists()) {
+                await setDoc(userDocRef, {
+                    displayName: signedInUser.displayName,
+                    email: signedInUser.email,
+                    photoURL: signedInUser.photoURL,
+                    totalTokens: 0,
+                    cooldownEndTime: 0,
+                    lastClaimTime: null,
+                });
+            }
+        }
+      } catch (error) {
+        console.error("Authentication failed", error);
+      }
+    }
+  };
+  
+  const handleClaim = async () => {
+    if (!user || !firestore || !userDocRef) return;
+    if (userProfile?.cooldownEndTime && Date.now() < userProfile.cooldownEndTime) return;
 
     setIsClaiming(true);
     // Simulate API call for claiming tokens
-    setTimeout(() => {
-      const newBalance = tokenBalance + TOKEN_CLAIM_AMOUNT;
-      setTokenBalance(newBalance);
-      
-      const now = new Date();
-      setLastClaimTime(now.toISOString());
+    try {
+        const newBalance = (userProfile?.totalTokens || 0) + TOKEN_CLAIM_AMOUNT;
+        const now = new Date();
+        const endTime = Date.now() + COOLDOWN_SECONDS * 1000;
+        const newTxHash = `0x${[...Array(64)].map(() => Math.floor(Math.random() * 16).toString(16)).join('')}`;
 
-      const endTime = Date.now() + COOLDOWN_SECONDS * 1000;
-      setCooldownEndTime(endTime);
-      
-      setTxHash(`0x${[...Array(64)].map(() => Math.floor(Math.random() * 16).toString(16)).join('')}`);
+        await updateDoc(userDocRef, {
+            totalTokens: newBalance,
+            lastClaimTime: now.toISOString(),
+            cooldownEndTime: endTime,
+        });
 
-      setIsClaiming(false);
-      setShowSuccessModal(true);
-    }, 2000);
+        setTxHash(newTxHash);
+        setShowSuccessModal(true);
+
+    } catch (error) {
+        console.error("Failed to claim tokens", error);
+    } finally {
+        setIsClaiming(false);
+    }
   };
-
-  useEffect(() => {
-    // Persist cooldown in localStorage to survive page reloads
-    const storedCooldownEnd = localStorage.getItem('cooldownEndTime');
-    if (storedCooldownEnd) {
-      const endTime = parseInt(storedCooldownEnd, 10);
-      if (Date.now() < endTime) {
-        setCooldownEndTime(endTime);
-      } else {
-        localStorage.removeItem('cooldownEndTime');
-      }
-    }
-  }, []);
-
-  useEffect(() => {
-    if (cooldownEndTime) {
-      localStorage.setItem('cooldownEndTime', cooldownEndTime.toString());
-    }
-  }, [cooldownEndTime]);
-
 
   return (
     <>
@@ -82,14 +96,16 @@ export default function Home() {
         </div>
 
         <ClaimCard
-          isConnected={isConnected}
+          isConnected={!!user}
           isClaiming={isClaiming}
-          cooldownEndTime={cooldownEndTime}
-          walletAddress={walletAddress}
-          tokenBalance={tokenBalance}
-          lastClaimTime={lastClaimTime}
+          cooldownEndTime={userProfile?.cooldownEndTime || null}
+          walletAddress={user?.displayName || ''}
+          tokenBalance={userProfile?.totalTokens || 0}
+          lastClaimTime={userProfile?.lastClaimTime || null}
           onConnectWallet={handleConnectWallet}
           onClaim={handleClaim}
+          userProfile={userProfile}
+          isProfileLoading={userProfileLoading}
         />
 
         <SuccessModal
@@ -98,8 +114,11 @@ export default function Home() {
           txHash={txHash}
         />
         
-        <footer className="absolute bottom-4 text-center text-sm text-foreground/50">
-          <p>A futuristic, frictionless portal where you collect digital energy with a single tap.</p>
+        <footer className="absolute bottom-4 text-center text-sm text-foreground/50 flex flex-col gap-2">
+            <Button asChild variant="link" className="text-foreground/50">
+                <Link href="/leaderboard">View Leaderboard</Link>
+            </Button>
+            <p>A futuristic, frictionless portal where you collect digital energy with a single tap.</p>
         </footer>
       </main>
     </>
